@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from wifi_distance_monitor import WifiDistanceMonitor
 import argparse
@@ -16,6 +16,12 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 monitor = None
+
+# Default settings
+settings = {
+    "scan_interval": 2,
+    "distance_threshold": 10
+}
 
 @app.route('/devices', methods=['GET'])
 def get_devices():
@@ -37,6 +43,38 @@ def get_devices():
     except Exception as e:
         logger.error(f"Error processing request: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+@app.route('/settings', methods=['GET', 'POST'])
+def handle_settings():
+    """API endpoint to get or update settings"""
+    global settings
+    
+    if request.method == 'GET':
+        return jsonify(settings)
+    
+    elif request.method == 'POST':
+        try:
+            new_settings = request.get_json()
+            # Validate settings
+            if not isinstance(new_settings.get('scan_interval'), (int, float)) or \
+               not isinstance(new_settings.get('distance_threshold'), (int, float)):
+                return jsonify({"error": "Invalid settings format"}), 400
+            
+            # Update settings
+            settings.update(new_settings)
+            
+            # Update monitor settings if it exists
+            if monitor:
+                monitor.update_settings(
+                    scan_interval=settings['scan_interval'],
+                    distance_threshold=settings['distance_threshold']
+                )
+            
+            return jsonify({"message": "Settings updated successfully"})
+            
+        except Exception as e:
+            logger.error(f"Error updating settings: {e}", exc_info=True)
+            return jsonify({"error": str(e)}), 500
 
 def main():
     parser = argparse.ArgumentParser(description='WiFi Distance Monitoring Server')

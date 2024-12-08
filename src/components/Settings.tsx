@@ -17,7 +17,7 @@ const SettingsView = () => {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const response = await fetch('http://localhost:5000/settings');
+        const response = await fetch('http://localhost:5001/settings');
         const data = await response.json();
         setSettings(data);
       } catch (err) {
@@ -31,7 +31,7 @@ const SettingsView = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:5000/settings', {
+      const response = await fetch('http://localhost:5001/settings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

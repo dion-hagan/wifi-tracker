@@ -53,7 +53,19 @@ class WifiDistanceMonitor:
         self.reference_power = -50
         self.path_loss_exponent = 3.0
         
+        # Settings
+        self.scan_interval = 2
+        self.distance_threshold = 10
+        
         self.verify_setup()
+
+    def update_settings(self, scan_interval: int = None, distance_threshold: float = None):
+        """Update monitor settings."""
+        if scan_interval is not None:
+            self.scan_interval = max(1, min(60, scan_interval))  # Clamp between 1-60 seconds
+        if distance_threshold is not None:
+            self.distance_threshold = max(1, min(50, distance_threshold))  # Clamp between 1-50 meters
+        self.logger.info(f"Settings updated - scan_interval: {self.scan_interval}s, distance_threshold: {self.distance_threshold}m")
 
     def detect_wifi_interface(self) -> str:
         """Auto-detect the WiFi interface."""
@@ -170,35 +182,94 @@ class WifiDistanceMonitor:
         """Convert netmask to CIDR notation."""
         return sum([bin(int(x)).count('1') for x in netmask.split('.')])
 
-    def get_rssi_for_device(self, mac_address: str) -> Optional[float]:
-        """Get RSSI for a specific device."""
+    def get_all_device_rssi(self) -> Dict[str, float]:
+        """Get RSSI values for all visible devices."""
+        rssi_values = {}
         try:
-            # On macOS, use airport command
+            # On macOS, use airport command to scan for all devices
             airport_path = '/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport'
             if os.path.exists(airport_path):
-                result = subprocess.run(
-                    [airport_path, '-I', '-i', self.interface],
+                # First, get our current network's BSSID (router MAC)
+                info_result = subprocess.run(
+                    [airport_path, '-I'],
                     capture_output=True,
                     text=True
                 )
-                if result.stdout:
-                    # Try to find RSSI for the specific device
-                    rssi_match = re.search(r'agrCtlRSSI:\s*(-\d+)', result.stdout)
-                    if rssi_match:
-                        return float(rssi_match.group(1))
-                    
-                    # If specific device RSSI not found, use overall RSSI
-                    noise_match = re.search(r'agrCtlNoise:\s*(-\d+)', result.stdout)
-                    if noise_match:
-                        noise = float(noise_match.group(1))
-                        # Estimate RSSI based on noise floor
-                        return noise + 30  # Typical signal-to-noise ratio
+                current_bssid = None
+                if info_result.stdout:
+                    bssid_match = re.search(r'BSSID: ([0-9a-fA-F:]{17})', info_result.stdout)
+                    if bssid_match:
+                        current_bssid = bssid_match.group(1).upper()
+
+                # Then scan for all devices
+                scan_result = subprocess.run(
+                    [airport_path, '-s'],
+                    capture_output=True,
+                    text=True
+                )
+                
+                if scan_result.stdout:
+                    # Parse the airport scan output
+                    lines = scan_result.stdout.strip().split('\n')
+                    if len(lines) > 1:  # Ensure we have data beyond the header
+                        # Parse header to find column positions
+                        header = lines[0].strip()
+                        rssi_pos = header.find('RSSI')
+                        bssid_pos = header.find('BSSID')
+                        
+                        # Process each line after the header
+                        for line in lines[1:]:
+                            try:
+                                if len(line.strip()) == 0:
+                                    continue
+                                    
+                                # Extract RSSI (should be a negative number)
+                                rssi_str = line[rssi_pos:rssi_pos+4].strip()
+                                if rssi_str.startswith('-') and rssi_str[1:].isdigit():
+                                    rssi = float(rssi_str)
+                                    
+                                    # Extract MAC address (BSSID)
+                                    # Look for MAC address pattern in the line
+                                    mac_match = re.search(r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})', line[bssid_pos:])
+                                    if mac_match:
+                                        mac = mac_match.group(0).upper()
+                                        rssi_values[mac] = rssi
+                                        self.logger.debug(f"Found device - MAC: {mac}, RSSI: {rssi}")
+                            except Exception as e:
+                                self.logger.error(f"Error parsing line: {line}. Error: {e}")
+                                continue
+
+                # If we found our router's MAC, use its RSSI as a baseline for other devices
+                if current_bssid and current_bssid in rssi_values:
+                    router_rssi = rssi_values[current_bssid]
+                    # Use router's RSSI as a baseline for other devices
+                    for mac in rssi_values:
+                        if mac != current_bssid:
+                            # Adjust other devices' RSSI relative to router
+                            rssi_values[mac] = router_rssi - 10  # Assume slightly weaker signal
+
+        except Exception as e:
+            self.logger.error(f"Error getting device RSSI values: {e}")
+        
+        return rssi_values
+
+    def get_rssi_for_device(self, mac_address: str) -> Optional[float]:
+        """Get RSSI for a specific device."""
+        try:
+            # Get RSSI values for all devices
+            rssi_values = self.get_all_device_rssi()
+            
+            # Try to find the specific device's RSSI
+            mac_upper = mac_address.upper()
+            if mac_upper in rssi_values:
+                return rssi_values[mac_upper]
+            
+            # If device not found in scan, use a default value
+            return -75.0  # Weaker default signal
 
         except Exception as e:
             self.logger.error(f"Error getting RSSI for {mac_address}: {e}")
-        
-        # Return a default value if we couldn't get actual RSSI
-        return -70.0
+            return -75.0  # Return default value on error
 
     def scan_network_devices(self):
         """Scan for devices on the current network."""
@@ -207,6 +278,9 @@ class WifiDistanceMonitor:
             if not network_range:
                 self.logger.error("Could not determine network range")
                 return
+
+            # Get RSSI values for all devices first
+            rssi_values = self.get_all_device_rssi()
 
             # Use scapy for ARP scanning
             self.logger.debug(f"Scanning network range: {network_range}")
@@ -225,8 +299,9 @@ class WifiDistanceMonitor:
                     mac_address = received.hwsrc
                     discovered_devices.add(mac_address)
 
-                    # Get RSSI
-                    rssi = self.get_rssi_for_device(mac_address)
+                    # Get RSSI from our scan results
+                    mac_upper = mac_address.upper()
+                    rssi = rssi_values.get(mac_upper, -75.0)  # Use default if not found
                     
                     # Try to get hostname
                     hostname = self.get_device_name(ip_address)
@@ -291,7 +366,7 @@ class WifiDistanceMonitor:
             try:
                 while self.running:
                     self.scan_network_devices()
-                    time.sleep(2)
+                    time.sleep(self.scan_interval)  # Use configured scan interval
             except Exception as e:
                 self.logger.error(f"Error in monitor thread: {e}")
                 self.running = False
@@ -309,6 +384,7 @@ class WifiDistanceMonitor:
     def get_device_distances(self) -> Dict[str, dict]:
         """Get current distances and info for all tracked devices."""
         with self.lock:
+            # Filter devices based on distance threshold
             return {
                 device.device_name if device.device_name else f"Device ({device.mac_address})": {
                     "distance": device.estimated_distance,
@@ -321,4 +397,5 @@ class WifiDistanceMonitor:
                     "hostname": device.hostname
                 }
                 for device in self.devices.values()
+                if device.estimated_distance <= self.distance_threshold
             }
