@@ -6,11 +6,64 @@ import logging
 import threading
 import time
 
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# Custom color formatter
+class ColoredFormatter(logging.Formatter):
+    """Custom formatter that adds colors to log levels"""
+    
+    # Map all possible log levels to colors
+    COLORS = {
+        'NOTSET': '\033[0m',     # Default
+        'DEBUG': '\033[94m',     # Blue
+        'INFO': '\033[92m',      # Green
+        'WARNING': '\033[93m',   # Yellow
+        'ERROR': '\033[91m',     # Red
+        'CRITICAL': '\033[1;91m', # Bold Red
+        'RESET': '\033[0m'       # Reset
+    }
+
+    def format(self, record):
+        # Get the appropriate color for this level
+        color = self.COLORS.get(record.levelname, self.COLORS['NOTSET'])
+        reset = self.COLORS['RESET']
+
+        # Save original values
+        original_msg = record.msg
+        original_levelname = record.levelname
+
+        try:
+            # Add color to the message and levelname
+            record.msg = f"{color}{original_msg}{reset}"
+            record.levelname = f"{color}{original_levelname}{reset}"
+            
+            # Format the message
+            formatted_message = super().format(record)
+            
+            return formatted_message
+        except Exception as e:
+            # If any error occurs, return uncolored format
+            return super().format(record)
+        finally:
+            # Always restore original values
+            record.msg = original_msg
+            record.levelname = original_levelname
+
+# Configure root logger to capture all logs
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG)
+
+# Create console handler with color formatting
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+colored_formatter = ColoredFormatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+console_handler.setFormatter(colored_formatter)
+
+# Remove any existing handlers and add our colored handler
+root_logger.handlers = []
+root_logger.addHandler(console_handler)
+
+# Get logger for this module
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -90,7 +143,7 @@ def main():
         
         # Do an initial scan before starting the server
         logger.info("Performing initial scan...")
-        monitor.scan_network_devices()  # Fixed method name
+        monitor.scan_network_devices()
         
         # Start the monitoring thread
         logger.info("Starting monitor thread...")
@@ -98,7 +151,7 @@ def main():
         
         # Run Flask app
         logger.info("Starting Flask server...")
-        app.run(host='0.0.0.0', port=args.port, threaded=True)
+        app.run(host='0.0.0.0', port=args.port, threaded=True, debug=True)
     except Exception as e:
         logger.error(f"Error starting server: {e}", exc_info=True)
     finally:
