@@ -30,7 +30,7 @@ const Analytics = () => {
   useEffect(() => {
     const fetchDevices = async () => {
       try {
-        const response = await fetch('http://localhost:5000/devices');
+        const response = await fetch('http://localhost:5001/devices');
         const data = await response.json();
         setDevices(data.devices || []);
         

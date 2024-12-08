@@ -64,6 +64,17 @@ const DeviceMap = () => {
     return 'bg-red-500';
   };
 
+  // Calculate the maximum distance and scale factor
+  const maxDistance = Math.max(...Object.values(devices).map(d => d.distance), 0.1);
+  const maxRadius = 220; // Maximum radius in pixels
+  const scaleFactor = maxRadius / maxDistance;
+
+  // Calculate circle positions based on max distance
+  const circlePositions = [1.0, 0.75, 0.5, 0.25].map(fraction => ({
+    size: maxRadius * 2 * fraction,
+    label: `${(maxDistance * fraction * 100).toFixed(0)}cm`
+  }));
+
   return (
     <Card>
       <CardHeader>
@@ -77,12 +88,24 @@ const DeviceMap = () => {
           <div className="text-red-500">{error}</div>
         ) : (
           <div className="relative h-[500px] bg-gray-100 rounded-lg overflow-hidden">
-            {/* Signal strength circles */}
+            {/* Signal strength circles with labels */}
             <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-              <div className="w-[400px] h-[400px] border-2 border-gray-200 rounded-full opacity-20" />
-              <div className="absolute top-1/2 left-1/2 w-[300px] h-[300px] border-2 border-gray-200 rounded-full opacity-20 transform -translate-x-1/2 -translate-y-1/2" />
-              <div className="absolute top-1/2 left-1/2 w-[200px] h-[200px] border-2 border-gray-200 rounded-full opacity-20 transform -translate-x-1/2 -translate-y-1/2" />
-              <div className="absolute top-1/2 left-1/2 w-[100px] h-[100px] border-2 border-gray-200 rounded-full opacity-20 transform -translate-x-1/2 -translate-y-1/2" />
+              {circlePositions.map((circle, index) => (
+                <div key={index} className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                  <div 
+                    className="border-2 border-gray-200 rounded-full opacity-20"
+                    style={{
+                      width: `${circle.size}px`,
+                      height: `${circle.size}px`
+                    }}
+                  />
+                  <div 
+                    className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-4 text-xs text-gray-500"
+                  >
+                    {circle.label}
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* Center point representing the WiFi router */}
@@ -92,11 +115,9 @@ const DeviceMap = () => {
             </div>
 
             {/* Device points */}
-            {Object.entries(devices).map(([name, device]) => {
-              // Convert distance to relative position (max 200px from center)
-              const angle = Math.random() * Math.PI * 2; // Random angle
-              const maxRadius = 200;
-              const radius = Math.min((device.distance * 100), maxRadius); // Scale distance to pixels, max 200px
+            {Object.entries(devices).map(([name, device], index) => {
+              const angle = (index / Object.keys(devices).length) * Math.PI * 2; // Distribute devices evenly
+              const radius = device.distance * scaleFactor;
               const x = Math.cos(angle) * radius;
               const y = Math.sin(angle) * radius;
 
@@ -120,7 +141,7 @@ const DeviceMap = () => {
                   </div>
                   
                   {/* Tooltip */}
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-black bg-opacity-75 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-black bg-opacity-75 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10">
                     <div>{device.device_type}</div>
                     {device.manufacturer && <div>{device.manufacturer}</div>}
                     <div>RSSI: {device.rssi} dBm</div>

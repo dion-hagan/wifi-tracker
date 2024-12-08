@@ -2,6 +2,7 @@
   "name": "wifi-tracker",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "dependencies": {
     "@types/node": "^16.18.0",
     "lucide-react": "^0.263.1",
