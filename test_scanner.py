@@ -1,4 +1,4 @@
-from wifi_distance_monitor import WifiDistanceMonitor
+from app.core.monitor import WifiDistanceMonitor
 import time
 import sys
 import subprocess
