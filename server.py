@@ -1,7 +1,7 @@
 import argparse
 import logging
 
-from wifi_distance_monitor import WifiDistanceMonitor
+from app.core.monitor import WifiDistanceMonitor
 from app import create_app
 
 logger = logging.getLogger(__name__)
