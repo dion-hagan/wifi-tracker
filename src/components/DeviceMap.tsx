@@ -1,21 +1,30 @@
 import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
+import { Laptop, Smartphone, Tablet, HardDrive, Signal, Tv, Speaker, Router, GamepadIcon } from 'lucide-react';
 
 interface Device {
   mac_address: string;
   distance: number;
+  device_type: string;
+  manufacturer: string | null;
+  hostname: string | null;
+  rssi: number;
+}
+
+interface DevicesData {
+  [key: string]: Device;
 }
 
 const DeviceMap = () => {
-  const [devices, setDevices] = useState<Device[]>([]);
+  const [devices, setDevices] = useState<DevicesData>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchDevices = async () => {
       try {
-        const response = await fetch('http://localhost:5000/devices');
+        const response = await fetch('http://localhost:5001/devices');
         const data = await response.json();
-        setDevices(data.devices || []);
+        setDevices(data.devices || {});
       } catch (err) {
         setError('Failed to fetch device data');
       }
@@ -26,43 +35,95 @@ const DeviceMap = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const getDeviceIcon = (device: Device) => {
+    const type = device.device_type.toLowerCase();
+    const name = device.hostname?.toLowerCase() || '';
+
+    if (type.includes('iphone') || type.includes('android phone')) {
+      return <Smartphone className="h-4 w-4" />;
+    } else if (type.includes('ipad')) {
+      return <Tablet className="h-4 w-4" />;
+    } else if (type.includes('macbook') || type.includes('laptop')) {
+      return <Laptop className="h-4 w-4" />;
+    } else if (type.includes('tv') || name.includes('tv')) {
+      return <Tv className="h-4 w-4" />;
+    } else if (type.includes('gaming') || device.manufacturer?.toLowerCase().includes('playstation')) {
+      return <GamepadIcon className="h-4 w-4" />;
+    } else if (type.includes('speaker')) {
+      return <Speaker className="h-4 w-4" />;
+    } else if (type.includes('network') || device.manufacturer?.toLowerCase().includes('ubee')) {
+      return <Router className="h-4 w-4" />;
+    }
+    return <HardDrive className="h-4 w-4" />;
+  };
+
+  const getSignalColor = (rssi: number) => {
+    if (rssi >= -50) return 'bg-green-500';
+    if (rssi >= -60) return 'bg-blue-500';
+    if (rssi >= -70) return 'bg-yellow-500';
+    return 'bg-red-500';
+  };
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Device Map</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <Signal className="h-6 w-6" />
+          Device Map
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {error ? (
           <div className="text-red-500">{error}</div>
         ) : (
-          <div className="relative h-[500px] bg-gray-100 rounded-lg">
+          <div className="relative h-[500px] bg-gray-100 rounded-lg overflow-hidden">
+            {/* Signal strength circles */}
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+              <div className="w-[400px] h-[400px] border-2 border-gray-200 rounded-full opacity-20" />
+              <div className="absolute top-1/2 left-1/2 w-[300px] h-[300px] border-2 border-gray-200 rounded-full opacity-20 transform -translate-x-1/2 -translate-y-1/2" />
+              <div className="absolute top-1/2 left-1/2 w-[200px] h-[200px] border-2 border-gray-200 rounded-full opacity-20 transform -translate-x-1/2 -translate-y-1/2" />
+              <div className="absolute top-1/2 left-1/2 w-[100px] h-[100px] border-2 border-gray-200 rounded-full opacity-20 transform -translate-x-1/2 -translate-y-1/2" />
+            </div>
+
             {/* Center point representing the WiFi router */}
             <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
               <div className="w-6 h-6 bg-blue-500 rounded-full animate-pulse" />
-              <div className="mt-2 text-sm font-medium text-center">Router</div>
+              <div className="mt-2 text-xs font-medium text-center">Router</div>
             </div>
 
             {/* Device points */}
-            {devices.map((device) => {
+            {Object.entries(devices).map(([name, device]) => {
               // Convert distance to relative position (max 200px from center)
               const angle = Math.random() * Math.PI * 2; // Random angle
               const maxRadius = 200;
-              const radius = (device.distance / 10) * maxRadius; // Scale distance to pixels
+              const radius = Math.min((device.distance * 100), maxRadius); // Scale distance to pixels, max 200px
               const x = Math.cos(angle) * radius;
               const y = Math.sin(angle) * radius;
 
               return (
                 <div
                   key={device.mac_address}
-                  className="absolute transform -translate-x-1/2 -translate-y-1/2"
+                  className="absolute transform -translate-x-1/2 -translate-y-1/2 group"
                   style={{
                     left: `calc(50% + ${x}px)`,
                     top: `calc(50% + ${y}px)`,
                   }}
                 >
-                  <div className="w-4 h-4 bg-green-500 rounded-full" />
-                  <div className="mt-1 text-xs text-center">
-                    {device.distance.toFixed(1)}m
+                  <div className={`w-8 h-8 ${getSignalColor(device.rssi)} rounded-full flex items-center justify-center text-white`}>
+                    {getDeviceIcon(device)}
+                  </div>
+                  <div className="mt-1 text-xs text-center font-medium">
+                    {name}
+                  </div>
+                  <div className="mt-0.5 text-xs text-center text-gray-500">
+                    {(device.distance * 100).toFixed(0)}cm
+                  </div>
+                  
+                  {/* Tooltip */}
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-black bg-opacity-75 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div>{device.device_type}</div>
+                    {device.manufacturer && <div>{device.manufacturer}</div>}
+                    <div>RSSI: {device.rssi} dBm</div>
                   </div>
                 </div>
               );

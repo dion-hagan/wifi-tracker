@@ -52,7 +52,7 @@ def main():
         
         # Do an initial scan before starting the server
         logger.info("Performing initial scan...")
-        monitor.scan_wifi_devices()
+        monitor.scan_network_devices()  # Fixed method name
         
         # Start the monitoring thread
         logger.info("Starting monitor thread...")
