@@ -66,7 +66,7 @@ const DeviceMap = () => {
 
   // Calculate the maximum distance and scale factor
   const maxDistance = Math.max(...Object.values(devices).map(d => d.distance), 0.1);
-  const maxRadius = 220; // Maximum radius in pixels
+  const maxRadius = 400; // Increased from 220 to 400 for better visibility
   const scaleFactor = maxRadius / maxDistance;
 
   // Calculate circle positions based on max distance
@@ -133,10 +133,10 @@ const DeviceMap = () => {
                   <div className={`w-8 h-8 ${getSignalColor(device.rssi)} rounded-full flex items-center justify-center text-white`}>
                     {getDeviceIcon(device)}
                   </div>
-                  <div className="mt-1 text-xs text-center font-medium">
+                  <div className="mt-1 text-xs text-center font-medium bg-white bg-opacity-75 px-1 rounded">
                     {name}
                   </div>
-                  <div className="mt-0.5 text-xs text-center text-gray-500">
+                  <div className="mt-0.5 text-xs text-center text-gray-500 bg-white bg-opacity-75 px-1 rounded">
                     {(device.distance * 100).toFixed(0)}cm
                   </div>
                   
