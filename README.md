@@ -48,10 +48,10 @@ npm install
 1. Start the server (requires root privileges):
 ```bash
 # On Linux:
-sudo python3 server.py --interface wlan0 --port 5000
+sudo python3 server.py --interface wlan0 --port 5001
 
 # On macOS:
-sudo python3 server.py --interface en0 --port 5000
+sudo python3 server.py --interface en1 --port 5001
 ```
 
 2. Start the web interface development server:
@@ -59,11 +59,11 @@ sudo python3 server.py --interface en0 --port 5000
 npm run dev
 ```
 
-3. Access the web interface at `http://localhost:3000`
+3. Access the web interface at `http://localhost:5173`
 
 4. Or access the API directly:
 ```bash
-curl http://localhost:5000/devices
+curl http://localhost:5001/devices
 ```
 
 The API response will be in JSON format:
