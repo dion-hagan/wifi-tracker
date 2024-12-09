@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
-import { Laptop, Smartphone, Tablet, HardDrive, Signal, Tv, Speaker, Router, GamepadIcon } from 'lucide-react';
+import { Laptop, Smartphone, Tablet, HardDrive, Signal, Tv, Speaker, Router, GamepadIcon, ZoomIn, ZoomOut } from 'lucide-react';
 
 interface Device {
   mac_address: string;
@@ -18,6 +18,8 @@ interface DevicesData {
 const DeviceMap = () => {
   const [devices, setDevices] = useState<DevicesData>({});
   const [error, setError] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [hoveredDevice, setHoveredDevice] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchDevices = async () => {
@@ -34,6 +36,16 @@ const DeviceMap = () => {
     const interval = setInterval(fetchDevices, 2000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = -e.deltaY / 1000;
+    setZoom(prevZoom => Math.min(Math.max(0.5, prevZoom + delta), 2));
+  };
+
+  const adjustZoom = (delta: number) => {
+    setZoom(prevZoom => Math.min(Math.max(0.5, prevZoom + delta), 2));
+  };
 
   const getDeviceIcon = (device: Device) => {
     const type = device.device_type.toLowerCase();
@@ -78,77 +90,124 @@ const DeviceMap = () => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Signal className="h-6 w-6" />
-          Device Map
-        </CardTitle>
+        <div className="flex justify-between items-center">
+          <CardTitle className="flex items-center gap-2">
+            <Signal className="h-6 w-6" />
+            Device Map
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => adjustZoom(-0.1)}
+              className="p-1 rounded hover:bg-gray-100"
+              title="Zoom Out"
+            >
+              <ZoomOut className="h-5 w-5" />
+            </button>
+            <span className="text-sm">{(zoom * 100).toFixed(0)}%</span>
+            <button
+              onClick={() => adjustZoom(0.1)}
+              className="p-1 rounded hover:bg-gray-100"
+              title="Zoom In"
+            >
+              <ZoomIn className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         {error ? (
           <div className="text-red-500">{error}</div>
         ) : (
-          <div className="relative h-[500px] bg-gray-100 rounded-lg overflow-hidden">
-            {/* Signal strength circles with labels */}
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-              {circlePositions.map((circle, index) => (
-                <div key={index} className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-                  <div 
-                    className="border-2 border-gray-200 rounded-full opacity-20"
+          <div
+            className="relative h-[500px] bg-gray-100 rounded-lg overflow-hidden"
+            onWheel={handleWheel}
+          >
+            {/* Map container with zoom transform */}
+            <div
+              className="absolute top-1/2 left-1/2 w-full h-full"
+              style={{
+                transform: `translate(-50%, -50%)`
+              }}
+            >
+              {/* Zoomable background with circles */}
+              <div
+                className="absolute top-1/2 left-1/2 w-full h-full transition-transform duration-200"
+                style={{
+                  transform: `translate(-50%, -50%) scale(${zoom})`
+                }}
+              >
+                {/* Signal strength circles with labels */}
+                {circlePositions.map((circle, index) => (
+                  <div key={index} className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                    <div
+                      className="border-2 border-gray-200 rounded-full opacity-20"
+                      style={{
+                        width: `${circle.size}px`,
+                        height: `${circle.size}px`
+                      }}
+                    />
+                    <div
+                      className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-4 text-xs text-gray-500"
+                      style={{
+                        transform: `scale(${1/zoom})`
+                      }}
+                    >
+                      {circle.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Center point representing the WiFi router */}
+              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                <div className="w-6 h-6 bg-blue-500 rounded-full animate-pulse" />
+                <div className="mt-2 text-xs font-medium text-center">Router</div>
+              </div>
+
+              {/* Device points */}
+              {Object.entries(devices).map(([name, device], index) => {
+                const angle = (index / Object.keys(devices).length) * Math.PI * 2;
+                const radius = device.distance * scaleFactor * zoom; // Scale the radius with zoom
+                const x = Math.cos(angle) * radius;
+                const y = Math.sin(angle) * radius;
+
+                return (
+                  <div
+                    key={device.mac_address}
+                    className="absolute transform -translate-x-1/2 -translate-y-1/2 group transition-all duration-200"
                     style={{
-                      width: `${circle.size}px`,
-                      height: `${circle.size}px`
+                      left: `calc(50% + ${x}px)`,
+                      top: `calc(50% + ${y}px)`,
+                      zIndex: hoveredDevice === device.mac_address ? 50 : 10,
                     }}
-                  />
-                  <div 
-                    className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-4 text-xs text-gray-500"
+                    onMouseEnter={() => setHoveredDevice(device.mac_address)}
+                    onMouseLeave={() => setHoveredDevice(null)}
                   >
-                    {circle.label}
+                    <div
+                      className={`w-8 h-8 ${getSignalColor(device.rssi)} rounded-full flex items-center justify-center text-white transition-transform duration-200`}
+                      style={{
+                        transform: hoveredDevice === device.mac_address ? 'scale(1.2)' : 'scale(1)',
+                      }}
+                    >
+                      {getDeviceIcon(device)}
+                    </div>
+                    <div className="mt-1 text-xs text-center font-medium bg-white bg-opacity-75 px-1 rounded">
+                      {name}
+                    </div>
+                    <div className="mt-0.5 text-xs text-center text-gray-500 bg-white bg-opacity-75 px-1 rounded">
+                      {(device.distance * 100).toFixed(0)}cm
+                    </div>
+
+                    {/* Tooltip */}
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-black bg-opacity-75 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                      <div>{device.device_type}</div>
+                      {device.manufacturer && <div>{device.manufacturer}</div>}
+                      <div>RSSI: {device.rssi} dBm</div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-
-            {/* Center point representing the WiFi router */}
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-              <div className="w-6 h-6 bg-blue-500 rounded-full animate-pulse" />
-              <div className="mt-2 text-xs font-medium text-center">Router</div>
-            </div>
-
-            {/* Device points */}
-            {Object.entries(devices).map(([name, device], index) => {
-              const angle = (index / Object.keys(devices).length) * Math.PI * 2; // Distribute devices evenly
-              const radius = device.distance * scaleFactor;
-              const x = Math.cos(angle) * radius;
-              const y = Math.sin(angle) * radius;
-
-              return (
-                <div
-                  key={device.mac_address}
-                  className="absolute transform -translate-x-1/2 -translate-y-1/2 group"
-                  style={{
-                    left: `calc(50% + ${x}px)`,
-                    top: `calc(50% + ${y}px)`,
-                  }}
-                >
-                  <div className={`w-8 h-8 ${getSignalColor(device.rssi)} rounded-full flex items-center justify-center text-white`}>
-                    {getDeviceIcon(device)}
-                  </div>
-                  <div className="mt-1 text-xs text-center font-medium bg-white bg-opacity-75 px-1 rounded">
-                    {name}
-                  </div>
-                  <div className="mt-0.5 text-xs text-center text-gray-500 bg-white bg-opacity-75 px-1 rounded">
-                    {(device.distance * 100).toFixed(0)}cm
-                  </div>
-                  
-                  {/* Tooltip */}
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-black bg-opacity-75 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                    <div>{device.device_type}</div>
-                    {device.manufacturer && <div>{device.manufacturer}</div>}
-                    <div>RSSI: {device.rssi} dBm</div>
-                  </div>
-                </div>
-              );
-            })}
           </div>
         )}
       </CardContent>
