@@ -118,15 +118,21 @@ class WifiDistanceMonitor:
             # Add WiFi devices first
             with self.lock:
                 for mac_address, rssi in rssi_values.items():
+                    # Get manufacturer info immediately for better device classification
+                    manufacturer = get_manufacturer(mac_address)
+
                     if mac_address not in self.devices:
+                        # Initialize new device with manufacturer info and initial device type guess
+                        device_type = guess_device_type(None, manufacturer)  # Try to guess type based on manufacturer
+
                         self.devices[mac_address] = NetworkDevice(
                             mac_address=mac_address,
                             ip_address="",  # Will be updated if found via ARP
                             rssi=rssi,
                             last_seen=datetime.now(),
                             device_name=None,
-                            manufacturer=get_manufacturer(mac_address),
-                            device_type="WiFi Device"
+                            manufacturer=manufacturer,
+                            device_type=device_type
                         )
                     else:
                         self.devices[mac_address].rssi = rssi
@@ -134,6 +140,15 @@ class WifiDistanceMonitor:
                         self.devices[mac_address].signal_history.append(rssi)
                         if len(self.devices[mac_address].signal_history) > 10:
                             self.devices[mac_address].signal_history.pop(0)
+
+                        # Update manufacturer if not already set
+                        if not self.devices[mac_address].manufacturer:
+                            self.devices[mac_address].manufacturer = manufacturer
+                            # Re-guess device type with manufacturer info
+                            self.devices[mac_address].device_type = guess_device_type(
+                                self.devices[mac_address].hostname,
+                                manufacturer
+                            )
 
             # Try ARP scanning to get IP addresses
             _, network_range = get_network_info(self.interface)
@@ -159,19 +174,27 @@ class WifiDistanceMonitor:
                             device.ip_address = ip_address
                             hostname = get_device_name(ip_address)
                             device.hostname = hostname or device.hostname
+
+                            # Always try to get manufacturer if not already set
                             if not device.manufacturer:
                                 device.manufacturer = get_manufacturer(mac_address)
+
+                            # Update device type with all available information
                             device.device_type = guess_device_type(hostname, device.manufacturer)
                         else:
                             # Device found via ARP but not WiFi
+                            manufacturer = get_manufacturer(mac_address)
+                            hostname = get_device_name(ip_address)
+                            device_type = guess_device_type(hostname, manufacturer)
+
                             self.devices[mac_address] = NetworkDevice(
                                 mac_address=mac_address,
                                 ip_address=ip_address,
                                 rssi=-100,  # Default weak signal
                                 last_seen=datetime.now(),
-                                hostname=get_device_name(ip_address),
-                                manufacturer=get_manufacturer(mac_address),
-                                device_type="Network Device"
+                                hostname=hostname,
+                                manufacturer=manufacturer,
+                                device_type=device_type
                             )
 
                     logger.info(f"Discovered {len(discovered_devices)} devices")
