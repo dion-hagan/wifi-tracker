@@ -10,13 +10,36 @@ api = Blueprint('api', __name__)
 monitor = None
 
 def init_routes(wifi_monitor):
-    """Initialize routes with a monitor instance"""
+    """
+    Initialize API routes with a WiFi monitor instance.
+
+    Args:
+        wifi_monitor: The WifiDistanceMonitor instance to use for device tracking.
+    """
     global monitor
     monitor = wifi_monitor
 
 @api.route('/devices', methods=['GET'])
 def get_devices():
-    """API endpoint to get all detected devices and their distances"""
+    """
+    API endpoint to retrieve all detected devices and their distances.
+
+    Returns:
+        flask.Response: JSON response containing:
+            On success: {"devices": {
+                "device_name": {
+                    "distance": float,
+                    "rssi": float,
+                    "last_seen": str (ISO format),
+                    "ip_address": str,
+                    "mac_address": str,
+                    "manufacturer": str,
+                    "device_type": str,
+                    "hostname": str
+                }
+            }}
+            On error: {"error": str}, status code 500
+    """
     logger.debug("Received request for /devices")
     
     if not monitor:
@@ -35,7 +58,22 @@ def get_devices():
 
 @api.route('/settings', methods=['GET', 'POST'])
 def handle_settings():
-    """API endpoint to get or update settings"""
+    """
+    API endpoint to get or update application settings.
+
+    Methods:
+        GET: Retrieve current settings
+        POST: Update settings with new values in request body
+
+    Returns:
+        flask.Response: JSON response containing:
+            GET: Current settings object with all configuration values
+            POST success: {
+                "message": "Settings updated successfully",
+                "settings": {updated settings object}
+            }
+            POST error: {"error": str}, status code 500
+    """
     if request.method == 'GET':
         return jsonify(settings.get_all())
     

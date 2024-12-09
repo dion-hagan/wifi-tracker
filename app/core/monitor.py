@@ -20,9 +20,31 @@ from app.core.utils import (
 logger = logging.getLogger(__name__)
 
 class WifiDistanceMonitor:
-    """Monitors WiFi devices and their distances."""
+    """
+    A class for monitoring WiFi devices and tracking their approximate distances.
     
+    This monitor uses WiFi signal strength (RSSI) and ARP scanning to detect and track
+    devices on the network, calculating their approximate distances using signal propagation
+    models. It maintains a thread-safe collection of discovered devices and their properties.
+
+    Attributes:
+        interface (str): The WiFi interface used for monitoring (e.g., 'en0').
+        devices (Dict[str, NetworkDevice]): Dictionary of tracked devices by MAC address.
+        running (bool): Flag indicating if monitoring is active.
+        reference_power (float): RSSI calibration value at 1 meter distance (-50 dBm typical).
+        path_loss_exponent (float): Environmental signal loss factor (3.0 typical for indoor).
+        scan_interval (int): Time between scans in seconds (default: 2).
+        distance_threshold (float): Maximum distance in meters to track devices (default: 30).
+    """
+
     def __init__(self, interface: str = None):
+        """
+        Initialize the WiFi distance monitor.
+
+        Args:
+            interface (str, optional): WiFi interface to use. If None, auto-detected.
+                Common values are 'en0' or 'en1' on macOS.
+        """
         # Auto-detect WiFi interface if none provided
         self.interface = interface or detect_wifi_interface()
         self.devices: Dict[str, NetworkDevice] = {}
@@ -40,7 +62,15 @@ class WifiDistanceMonitor:
         self.verify_setup()
 
     def update_settings(self, scan_interval: int = None, distance_threshold: float = None):
-        """Update monitor settings."""
+        """
+        Update monitor settings with new values.
+
+        Args:
+            scan_interval (int, optional): New scan interval in seconds (1-60).
+                Lower values provide more frequent updates but increase system load.
+            distance_threshold (float, optional): New maximum tracking distance (1-100 meters).
+                Devices beyond this distance will be filtered from results.
+        """
         if scan_interval is not None:
             self.scan_interval = max(1, min(60, scan_interval))
         if distance_threshold is not None:
@@ -48,7 +78,16 @@ class WifiDistanceMonitor:
         logger.info(f"Settings updated - scan_interval: {self.scan_interval}s, distance_threshold: {self.distance_threshold}m")
 
     def verify_setup(self):
-        """Verify required commands and permissions."""
+        """
+        Verify required system commands and permissions are available.
+
+        Checks for:
+        - Root privileges (required for some network operations)
+        - Presence of the macOS airport command (required for WiFi scanning)
+
+        Logs warnings if any requirements are not met, but allows operation
+        to continue with potentially limited functionality.
+        """
         if os.geteuid() != 0:
             logger.warning("Not running as root. Some features may be limited.")
         
@@ -59,7 +98,19 @@ class WifiDistanceMonitor:
             logger.warning("Airport command not found. WiFi scanning may be limited.")
 
     def scan_network_devices(self):
-        """Scan for devices on the current network."""
+        """
+        Perform a complete scan for network devices.
+
+        This method performs several steps to discover and update device information:
+        1. Scans for WiFi devices and their signal strengths using the airport command
+        2. Performs ARP scanning to discover IP addresses of network devices
+        3. Updates device information (manufacturer, hostname, etc.)
+        4. Calculates approximate distances using signal strength
+        5. Removes devices not seen in the last 5 minutes
+
+        The method is thread-safe and updates the shared devices dictionary.
+        Exceptions during scanning are caught and logged to prevent thread termination.
+        """
         try:
             # Get RSSI values for all devices first
             rssi_values = get_all_device_rssi(self.interface)
@@ -145,7 +196,15 @@ class WifiDistanceMonitor:
             logger.error(f"Error scanning network devices: {e}")
 
     def start_monitoring(self):
-        """Start monitoring network devices."""
+        """
+        Start the device monitoring process in a background thread.
+
+        Initiates continuous scanning for devices at the configured interval.
+        The monitoring runs in a separate daemon thread that will automatically
+        terminate when the main program exits.
+
+        If monitoring is already active, this method has no effect.
+        """
         self.running = True
         logger.info("Starting network monitoring")
         
@@ -163,13 +222,37 @@ class WifiDistanceMonitor:
         self.monitor_thread.start()
 
     def stop_monitoring(self):
-        """Stop network monitoring."""
+        """
+        Stop the device monitoring process.
+
+        Signals the monitoring thread to stop and waits up to 3 seconds for it
+        to complete. The thread may continue running if it's in the middle of
+        a scan operation, but will terminate at the next opportunity.
+        """
         self.running = False
         if hasattr(self, 'monitor_thread'):
             self.monitor_thread.join(timeout=3)
 
     def get_device_distances(self) -> Dict[str, dict]:
-        """Get current distances and info for all tracked devices."""
+        """
+        Get current information for all tracked devices within the distance threshold.
+
+        Returns:
+            Dict[str, dict]: Dictionary mapping device identifiers to their properties:
+                {
+                    "Device Name or MAC": {
+                        "distance": float,  # Estimated distance in meters
+                        "rssi": float,      # Signal strength in dBm
+                        "last_seen": str,   # ISO format timestamp
+                        "ip_address": str,
+                        "mac_address": str,
+                        "manufacturer": str,
+                        "device_type": str,
+                        "hostname": str
+                    }
+                }
+                Only includes devices within the configured distance_threshold.
+        """
         with self.lock:
             return {
                 device.device_name if device.device_name else f"Device ({device.mac_address})": {

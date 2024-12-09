@@ -4,6 +4,21 @@ import sys
 import subprocess
 
 def test_airport_directly():
+    """
+    Test the macOS airport command directly to verify WiFi scanning functionality.
+
+    This function executes the airport command with the scan option (-s) to list
+    all visible WiFi networks and their properties. It's useful for debugging
+    WiFi scanning issues independently of the monitor class.
+
+    The function:
+    1. Runs the airport -s command with a 5-second timeout
+    2. Prints the scan results to stdout
+    3. Prints any errors to stderr
+    4. Handles timeout and other exceptions gracefully
+
+    Note: Requires root privileges on macOS for full functionality.
+    """
     print("Testing airport command directly...")
     try:
         result = subprocess.run(
@@ -22,6 +37,30 @@ def test_airport_directly():
         print(f"Error running airport: {e}")
 
 def test_scanner():
+    """
+    Test the WifiDistanceMonitor class functionality.
+
+    This function performs a comprehensive test of the WiFi monitoring system:
+    1. Tests the airport command directly first
+    2. Creates a WifiDistanceMonitor instance
+    3. Starts the monitoring thread
+    4. Performs a manual device scan
+    5. Retrieves and displays detailed information about discovered devices
+
+    For each discovered device, it prints:
+    - Estimated distance in meters
+    - Signal strength (RSSI) in dBm
+    - IP address
+    - MAC address
+    - Device type
+    - Manufacturer (if available)
+    - Hostname (if available)
+
+    The test runs until interrupted by the user (Ctrl+C) or an error occurs.
+    All exceptions are caught and logged for debugging purposes.
+
+    Note: Requires root privileges for full functionality.
+    """
     # First test airport directly
     test_airport_directly()
     
