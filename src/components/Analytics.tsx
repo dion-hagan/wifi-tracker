@@ -15,6 +15,17 @@ import {
 
 interface Device {
   distance: number;
+  rssi: number;
+  last_seen: string;
+  ip_address: string;
+  mac_address: string;
+  manufacturer: string;
+  device_type: string;
+  hostname: string;
+}
+
+interface DevicesResponse {
+  devices: { [key: string]: Device };
 }
 
 interface HistoricalDataPoint {
@@ -31,16 +42,28 @@ const Analytics = () => {
     const fetchDevices = async () => {
       try {
         const response = await fetch('http://localhost:5001/devices');
-        const data = await response.json();
-        setDevices(data.devices || []);
+        const data: DevicesResponse = await response.json();
+
+        // Convert devices object to array
+        const deviceArray = Object.entries(data.devices || {}).map(([name, device]) => ({
+          name,
+          ...device
+        }));
+
+        setDevices(deviceArray);
         
         // Add historical data point
         const timestamp = new Date().toLocaleTimeString();
         setHistoricalData(prev => {
+          const deviceCount = deviceArray.length;
+          const averageDistance = deviceArray.length > 0
+            ? deviceArray.reduce((acc, dev) => acc + dev.distance, 0) / deviceArray.length
+            : 0;
+
           const newData = [...prev, {
             timestamp,
-            deviceCount: data.devices.length,
-            averageDistance: data.devices.reduce((acc: number, dev: Device) => acc + dev.distance, 0) / data.devices.length || 0
+            deviceCount,
+            averageDistance
           }];
           
           // Keep last 20 data points
@@ -63,7 +86,7 @@ const Analytics = () => {
   const stats = {
     totalDevices: devices.length,
     averageDistance: devices.length 
-      ? devices.reduce((acc: number, dev: Device) => acc + dev.distance, 0) / devices.length 
+      ? devices.reduce((acc, dev) => acc + dev.distance, 0) / devices.length
       : 0,
     closestDevice: devices.length 
       ? Math.min(...devices.map(dev => dev.distance)) 
