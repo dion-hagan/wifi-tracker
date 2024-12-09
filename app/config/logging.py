@@ -1,8 +1,18 @@
 import logging
 
 class ColoredFormatter(logging.Formatter):
-    """Custom formatter that adds colors to log levels"""
+    """A custom formatter that adds ANSI color codes to log messages based on their level.
     
+    This formatter enhances log readability by color-coding different log levels:
+    - DEBUG: Blue
+    - INFO: Green
+    - WARNING: Yellow
+    - ERROR: Red
+    - CRITICAL: Bold Red
+
+    Inherits from logging.Formatter and overrides the format method to add color.
+    """
+
     COLORS = {
         'NOTSET': '\033[0m',     # Default
         'DEBUG': '\033[94m',     # Blue
@@ -14,6 +24,18 @@ class ColoredFormatter(logging.Formatter):
     }
 
     def format(self, record):
+        """Format the log record with appropriate color codes.
+
+        Args:
+            record: A LogRecord instance representing the event being logged.
+
+        Returns:
+            str: The formatted log message with color codes.
+
+        Note:
+            The method preserves the original message and level name, restoring them
+            after formatting to prevent any side effects on other formatters.
+        """
         color = self.COLORS.get(record.levelname, self.COLORS['NOTSET'])
         reset = self.COLORS['RESET']
 
@@ -32,7 +54,20 @@ class ColoredFormatter(logging.Formatter):
             record.levelname = original_levelname
 
 def setup_logging():
-    """Configure application-wide logging settings"""
+    """Configure and initialize application-wide logging settings.
+
+    This function sets up:
+    - Root logger with DEBUG level
+    - Console handler with colored formatting
+    - Custom format including timestamp, logger name, level, and message
+
+    Returns:
+        logging.Logger: A configured logger instance for the current module.
+
+    Example:
+        logger = setup_logging()
+        logger.info("Application started")
+    """
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
 
