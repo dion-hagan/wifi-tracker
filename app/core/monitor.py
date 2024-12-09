@@ -23,7 +23,7 @@ class WifiDistanceMonitor:
     """
     A class for monitoring WiFi devices and tracking their approximate distances.
     
-    This monitor uses WiFi signal strength (RSSI) and ARP scanning to detect and track
+    This monitor uses both WiFi signal strength (RSSI) and ARP scanning to detect and track
     devices on the network, calculating their approximate distances using signal propagation
     models. It maintains a thread-safe collection of discovered devices and their properties.
 
@@ -54,7 +54,7 @@ class WifiDistanceMonitor:
         # RSSI calibration parameters
         self.reference_power = -50  # Typical value at 1 meter distance
         self.path_loss_exponent = 3.0  # Typical value for indoor environments
-        
+
         # Settings
         self.scan_interval = 2
         self.distance_threshold = 30
@@ -90,7 +90,7 @@ class WifiDistanceMonitor:
         """
         if os.geteuid() != 0:
             logger.warning("Not running as root. Some features may be limited.")
-        
+
         airport_path = '/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport'
         if os.path.exists(airport_path):
             logger.info("Found airport command")
@@ -101,54 +101,19 @@ class WifiDistanceMonitor:
         """
         Perform a complete scan for network devices.
 
-        This method performs several steps to discover and update device information:
+        This method:
         1. Scans for WiFi devices and their signal strengths using the airport command
         2. Performs ARP scanning to discover IP addresses of network devices
         3. Updates device information (manufacturer, hostname, etc.)
         4. Calculates approximate distances using signal strength
-        5. Removes devices not seen in the last 5 minutes
+        5. Filters out network infrastructure devices
+        6. Removes devices not seen in the last 5 minutes
 
         The method is thread-safe and updates the shared devices dictionary.
-        Exceptions during scanning are caught and logged to prevent thread termination.
         """
         try:
             # Get RSSI values for all devices first
             rssi_values = get_all_device_rssi(self.interface)
-
-            # Add WiFi devices first
-            with self.lock:
-                for mac_address, rssi in rssi_values.items():
-                    # Get manufacturer info immediately for better device classification
-                    manufacturer = get_manufacturer(mac_address)
-
-                    if mac_address not in self.devices:
-                        # Initialize new device with manufacturer info and initial device type guess
-                        device_type = guess_device_type(None, manufacturer)  # Try to guess type based on manufacturer
-
-                        self.devices[mac_address] = NetworkDevice(
-                            mac_address=mac_address,
-                            ip_address="",  # Will be updated if found via ARP
-                            rssi=rssi,
-                            last_seen=datetime.now(),
-                            device_name=None,
-                            manufacturer=manufacturer,
-                            device_type=device_type
-                        )
-                    else:
-                        self.devices[mac_address].rssi = rssi
-                        self.devices[mac_address].last_seen = datetime.now()
-                        self.devices[mac_address].signal_history.append(rssi)
-                        if len(self.devices[mac_address].signal_history) > 10:
-                            self.devices[mac_address].signal_history.pop(0)
-
-                        # Update manufacturer if not already set
-                        if not self.devices[mac_address].manufacturer:
-                            self.devices[mac_address].manufacturer = manufacturer
-                            # Re-guess device type with manufacturer info
-                            self.devices[mac_address].device_type = guess_device_type(
-                                self.devices[mac_address].hostname,
-                                manufacturer
-                            )
 
             # Try ARP scanning to get IP addresses
             _, network_range = get_network_info(self.interface)
@@ -169,28 +134,34 @@ class WifiDistanceMonitor:
                         mac_address = received.hwsrc.upper()
                         discovered_devices.add(mac_address)
 
+                        # Get device information
+                        manufacturer = get_manufacturer(mac_address)
+                        hostname = get_device_name(ip_address)
+                        device_type = guess_device_type(hostname, manufacturer)
+
+                        # Skip network infrastructure devices
+                        if "router" in device_type.lower() or "network device" in device_type.lower():
+                            continue
+
+                        # Get RSSI if available, otherwise use a default value
+                        rssi = rssi_values.get(mac_address, -85)  # Default to weak signal if not found
+
                         if mac_address in self.devices:
                             device = self.devices[mac_address]
                             device.ip_address = ip_address
-                            hostname = get_device_name(ip_address)
                             device.hostname = hostname or device.hostname
-
-                            # Always try to get manufacturer if not already set
-                            if not device.manufacturer:
-                                device.manufacturer = get_manufacturer(mac_address)
-
-                            # Update device type with all available information
-                            device.device_type = guess_device_type(hostname, device.manufacturer)
+                            device.manufacturer = manufacturer or device.manufacturer
+                            device.device_type = device_type
+                            device.rssi = rssi
+                            device.last_seen = datetime.now()
+                            device.signal_history.append(rssi)
+                            if len(device.signal_history) > 10:
+                                device.signal_history.pop(0)
                         else:
-                            # Device found via ARP but not WiFi
-                            manufacturer = get_manufacturer(mac_address)
-                            hostname = get_device_name(ip_address)
-                            device_type = guess_device_type(hostname, manufacturer)
-
                             self.devices[mac_address] = NetworkDevice(
                                 mac_address=mac_address,
                                 ip_address=ip_address,
-                                rssi=-100,  # Default weak signal
+                                rssi=rssi,
                                 last_seen=datetime.now(),
                                 hostname=hostname,
                                 manufacturer=manufacturer,
